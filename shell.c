@@ -31,7 +31,10 @@ void printdir(void)
 void readword(void)
 {
     len=0; fl_end=0; fl_s=0;
-    while(((c=getchды
+    while(((c=getchar())==' ') || (c=='\n'))
+    {
+        if(c=='\n') printdir();
+    }
     while((c!=EOF) && (c!='\n') && (c!=' '))
     {
         if(c=='"')
@@ -81,7 +84,6 @@ int main()
         {
             if (strcmp(str[0], "exit") == 0) 
             {
-                //нужно почистить динамическую память
                 for(i=0; i<=len_word; i++)
                 {
                     free(str[i]);
