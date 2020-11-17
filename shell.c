@@ -6,18 +6,17 @@
 #include <unistd.h>
 #include <limits.h>
 
-#define RESET "\033[0m"
-#define PURPLE "\033[0;35m"
 #define ARRSIZE 40
 #define COUNT 4
+#define RESET "\033[0m"
+#define PURPLE "\033[0;35m"
 
-char *word = NULL;
+char * word = NULL;
 char **str = NULL;
-int len=0;
-int fl_end = 0;
-int fl_s = 0;
+char c;
+int fl_end=0, fl_s=0;
+int len=0, len_word=0;
 
-//печать директории
 void printdir(void)
 {
     char* path = NULL;
@@ -29,13 +28,10 @@ void printdir(void)
     else perror("error");
 }
 
-//чтение слова
 void readword(void)
 {
-    char c;
-    len=0;
-    while(((c=getchar())==' ') || (c=='\n')){;}
- 
+    len=0; fl_end=0; fl_s=0;
+    while(((c=getchды
     while((c!=EOF) && (c!='\n') && (c!=' '))
     {
         if(c=='"')
@@ -59,32 +55,37 @@ void readword(void)
     if (len > 0) word[len] = '\0';
     if (c==EOF) fl_end = 1;
     if (c=='\n') fl_s = 1;
-    printf("%s", word);
-} 
+}
 
-int main(int argc, char **argv)
+int main()
 {
-    int len_word=0;
+    int i;
     for(;;)
     {
-        word = malloc(sizeof(char)*ARRSIZE);
-        str = malloc(sizeof(char*)*COUNT);
-        readword();
-        do
-        {
-            //добавить слово в массив слов
-            str[len_word]=strcpy(str[len_word], word);
+    printdir();
+    len_word=0;
+    word = malloc(sizeof(char)*ARRSIZE);
+    str = malloc(sizeof(char*)*COUNT);
+    do
+    {
             readword();
+            str[len_word]=strdup(word);
             len_word++;
             if(len_word >= COUNT) str=realloc(str,sizeof(char*)*(COUNT+len));
         } while((fl_end == 0) && (fl_s == 0));
+
+
+
+        str[len_word]=NULL;
         if (len_word!=0)
         {
-            printf("%s", str[0]);
             if (strcmp(str[0], "exit") == 0) 
             {
                 //нужно почистить динамическую память
-                free(str); //я могу так чистить массив слов? 
+                for(i=0; i<=len_word; i++)
+                {
+                    free(str[i]);
+                }
                 free(word);
                 exit(0);
             }
@@ -112,13 +113,18 @@ int main(int argc, char **argv)
                 {
                     execvp(str[0], str);
                     perror("execvp's error");
+                    exit(0);
                 }
                 else 
                     wait(0);
             }
-            free(str);
-            free(word);
             if(fl_end==1) exit(0);
         }
+        for(i=0; i<=len_word; i++)
+        {
+            free(str[i]);
+        }
+        free(word);
     }
+
 }
