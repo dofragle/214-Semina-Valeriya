@@ -88,6 +88,7 @@ int main()
                 {
                     free(str[i]);
                 }
+		free(str):
                 free(word);
                 exit(0);
             }
@@ -126,6 +127,7 @@ int main()
         {
             free(str[i]);
         }
+	free(str);
         free(word);
     }
 
