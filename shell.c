@@ -13,12 +13,12 @@
 #define PURPLE "\033[0;35m"
 
 char * word = NULL;
+char * word_per1 = NULL;
 char **str = NULL;
-char **konv_str = NULL;
 char c;
 int fl_end=0, fl_s=0; 
-int fl_per=0, fl_lp=0;
-int len=0, len_word=0, len_konv_str=0, n_commands=0;
+int fl_per=0, fl_per1=0, fl_lp=0;
+int len=0, len_word=0, n_commands=0;
 int fl_biNexWord=0; //флаг начала слова (чтобы не потерять первый символ)
 
 void printdir(void)
@@ -112,10 +112,121 @@ void ch_inout(void)
         dup2 (f,1);
 		close (f);
     }
+
+
+    if(fl_per1==3)
+    {
+        f = open(word_per1, O_RDONLY);
+        if (f==-1) perror(word_per1);
+        dup2 (f,0);
+		close (f);
+    }
+    else if(fl_per1==2)
+    {
+        f = open(word_per1, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+        if (f==-1) perror(word_per1);
+        dup2 (f,1);
+		close (f);
+    }
+    else if(fl_per1==1)
+    {
+        f = open(word_per1, O_WRONLY | O_APPEND | O_CREAT, 0666);
+        if (f==-1) perror(word_per1);
+        dup2 (f,1);
+		close (f);
+    }
 }
+
+
+
+
+int PipeN(char **words, int j)
+{
+    int fd[2], i=0, a=0, b=0, pid;
+    char **mas=NULL;
+
+    while (words[i]!=NULL)
+    {
+        if (strcmp(words[i],"|")==0){
+            mas=realloc(mas,sizeof(char**)*(a+1));
+            mas[a]=NULL;
+            if (pipe(fd)<0)
+            {
+                perror("Pipe's error");
+                exit(1);
+            }      
+            if ((pid=fork())==0)
+            {
+                if ((i+1)!=j) dup2(fd[1],1);
+                close(fd[0]);
+                close(fd[1]);
+                execvp(mas[0],mas);
+                perror("Execvp error");
+                return 4;    
+            }
+            else if (pid<0){
+                perror("Fork error");
+                return 5;
+            }  
+            dup2(fd[0],0);
+            close(fd[0]);
+            close(fd[1]);
+            for (b=0;b<a;b++)
+            {
+                free(mas[b]);
+                mas[b]=NULL;
+            } 
+            free(mas);
+            mas=NULL;
+            a=0; 
+            i++;  
+        }
+        else
+        {
+            mas=realloc(mas,sizeof(char**)*(a+1));
+            mas[a]=strdup(words[i]);
+            a++;  
+            i++;  
+        }     
+    }
+    if (mas==NULL)
+    {
+        fprintf(stderr,"Error!!!\n");
+    }
+    else
+    { 
+        if ((pid=fork())==0)
+        {
+            mas=realloc(mas,sizeof(char**)*(a+1));
+            mas[a]=NULL;
+            execvp(mas[0],mas);
+            perror("Execvp error");
+            return 4;    
+        }
+        else if (pid<0)
+        {
+            perror("Fork error");
+            return 5;
+        } 
+        else 
+            wait(NULL); 
+    }
+    while (wait(NULL)!=-1);
+    for (b=0;b<a;b++)
+    {
+        free(mas[b]);
+        mas[b]=NULL;
+    } 
+    free(mas);
+    return 0;
+}
+
+
 
 int main()
 {
+    char **konv_str = NULL;
+    int len_konv_str;
     for(;;)
     {
         len_konv_str = 0;
@@ -125,7 +236,7 @@ int main()
         str = malloc(sizeof(char*)*COUNT);
         do
         {
-            fl_per=0;
+            fl_per=0; fl_per1=0;
             readword();
             str[len_word]=strdup(word);
             len_word++;
@@ -135,7 +246,18 @@ int main()
 
         if(fl_per!=0)
         {
-        readword();
+          fl_per1=fl_per;
+          readword();
+          word_per1 = strdup(word);
+          while(c!='\n')
+          {
+              readword();
+              if(fl_per1==fl_per || (fl_per==1 && fl_per1==2) ||(fl_per==2 && fl_per1==1))
+              {
+                  word_per1 = strdup(word);
+                  fl_per1=fl_per;
+              }
+          }
         }
 
         if(fl_lp==1)
@@ -190,7 +312,15 @@ int main()
                 }
             }
             konv_str[len_konv_str]=NULL;
-            
+
+
+            if (fork()==0)
+            {
+                PipeN(konv_str, len_konv_str);
+                exit(0);
+            }
+            else
+                wait(0);
         }
 
 
@@ -233,6 +363,7 @@ int main()
             }
             if(fl_end==1) exit(0);
         }
+        if(fl_per1!=0) free(word_per1);
         del();
     }
 }
