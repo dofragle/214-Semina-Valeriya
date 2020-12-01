@@ -140,7 +140,7 @@ void ch_inout(void)
 
 
 
-int PipeN(char **words, int j)
+/*int PipeN(char **words, int j)
 {
     int fd[2], i=0, a=0, b=0, pid;
     char **mas=NULL;
@@ -219,7 +219,7 @@ int PipeN(char **words, int j)
     } 
     free(mas);
     return 0;
-}
+}*/
 
 
 
@@ -254,6 +254,7 @@ int main()
               readword();
               if(fl_per1==fl_per || (fl_per==1 && fl_per1==2) ||(fl_per==2 && fl_per1==1))
               {
+                  free(word_per1);
                   word_per1 = strdup(word);
                   fl_per1=fl_per;
               }
@@ -316,11 +317,18 @@ int main()
 
             if (fork()==0)
             {
-                PipeN(konv_str, len_konv_str);
+                /*PipeN(konv_str, len_konv_str);*/
+                for(int i=0; i<len_konv_str; i++)
+                    free(konv_str[i]);
+                free(konv_str);
                 exit(0);
             }
             else
                 wait(0);
+
+            for(int i=0; i<len_konv_str; i++)
+                free(konv_str[i]);
+            free(konv_str);
         }
 
 
@@ -361,7 +369,11 @@ int main()
                     else 
                     wait(0);
             }
-            if(fl_end==1) exit(0);
+            if(fl_end==1) 
+            {
+                exit(0);
+                del();
+            }
         }
         if(fl_per1!=0) free(word_per1);
         del();
