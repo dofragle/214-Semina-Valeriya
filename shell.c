@@ -140,86 +140,146 @@ void ch_inout(void)
 
 
 
-/*int PipeN(char **words, int j)
+int PipeN(char **words, int len)
 {
-    int fd[2], i=0, a=0, b=0, pid;
+    int fd[2], f, i=0, a=0, pid;
     char **mas=NULL;
+
+    for(int l=0; l<len; l++)
+    {
+        if (strcmp(words[l], ">")==0)
+        {
+            free(words[l]);
+            words[l]=NULL;
+            l++;
+            f = open(words[l], O_CREAT | O_WRONLY | O_TRUNC, 0666);
+            if (f==-1) perror(words[l]);
+            free(words[l]);
+            words[l]=NULL;
+            dup2 (f,1);
+		    close (f);
+
+        }
+        else if(strcmp(words[l], ">>")==0)
+        {
+            free(words[l]);
+            words[l]=NULL;
+            l++;
+            f = open(words[l], O_WRONLY | O_APPEND | O_CREAT, 0666);
+            if (f==-1) perror(words[l]);
+            free(words[l]);
+            words[l]=NULL;
+            dup2 (f,1);
+		    close (f);
+        }
+    }
 
     while (words[i]!=NULL)
     {
-        if (strcmp(words[i],"|")==0){
-            mas=realloc(mas,sizeof(char**)*(a+1));
-            mas[a]=NULL;
-            if (pipe(fd)<0)
+        if (strcmp(words[i], "|")==0){
+            mas = realloc(mas, sizeof(char**)*(a+1));
+            mas[a] = NULL;
+            if (pipe(fd) < 0)
             {
-                perror("Pipe's error");
+                perror("pipe's error");
+                for (int b = 0; b < a; b++)
+                {
+                    free(mas[b]);
+                    mas[b] = NULL;
+                }
+                free(mas);
                 exit(1);
             }      
             if ((pid=fork())==0)
             {
-                if ((i+1)!=j) dup2(fd[1],1);
+                if ((i+1)!=len) 
+                    dup2(fd[1],1);
                 close(fd[0]);
                 close(fd[1]);
-                execvp(mas[0],mas);
-                perror("Execvp error");
+                execvp(mas[0], mas);
+                for (int b=0; b<a; b++)
+                {
+                    free(mas[b]);
+                    mas[b] = NULL;
+                }
+                free(mas);
+                perror("execvp error");
                 return 4;    
             }
             else if (pid<0){
-                perror("Fork error");
+                perror("fork error");
+                for (int b=0; b<a; b++)
+                {
+                    free(mas[b]);
+                    mas[b] = NULL;
+                }
+                free(mas);
                 return 5;
             }  
-            dup2(fd[0],0);
+            dup2(fd[0], 0);
             close(fd[0]);
             close(fd[1]);
-            for (b=0;b<a;b++)
+            for (int b=0; b<a; b++)
             {
                 free(mas[b]);
-                mas[b]=NULL;
+                mas[b] = NULL;
             } 
             free(mas);
-            mas=NULL;
+            mas = NULL;
             a=0; 
             i++;  
         }
         else
         {
-            mas=realloc(mas,sizeof(char**)*(a+1));
-            mas[a]=strdup(words[i]);
+            mas = realloc(mas,sizeof(char**)*(a+1));
+            mas[a] = strdup(words[i]);
             a++;  
             i++;  
         }     
     }
     if (mas==NULL)
     {
-        fprintf(stderr,"Error!!!\n");
+        fprintf(stderr,"error\n");
     }
     else
     { 
         if ((pid=fork())==0)
         {
-            mas=realloc(mas,sizeof(char**)*(a+1));
-            mas[a]=NULL;
+            mas = realloc(mas,sizeof(char**)*(a+1));
+            mas[a] = NULL;
             execvp(mas[0],mas);
-            perror("Execvp error");
+            for (int b=0; b<a; b++)
+            {
+                free(mas[b]);
+                mas[b] = NULL;
+            }
+            free(mas);
+            perror("execvp error");
             return 4;    
         }
         else if (pid<0)
         {
-            perror("Fork error");
+            perror("fork error");
+            for (int b=0; b<a; b++)
+            {
+                free(mas[b]);
+                mas[b] = NULL;
+            }
+            free(mas);
             return 5;
         } 
         else 
             wait(NULL); 
     }
     while (wait(NULL)!=-1);
-    for (b=0;b<a;b++)
+    for (int b=0; b<a; b++)
     {
         free(mas[b]);
-        mas[b]=NULL;
+        mas[b] = NULL;
     } 
     free(mas);
     return 0;
-}*/
+}
 
 
 
@@ -317,10 +377,11 @@ int main()
 
             if (fork()==0)
             {
-                /*PipeN(konv_str, len_konv_str);*/
+                PipeN(konv_str, len_konv_str);
                 for(int i=0; i<len_konv_str; i++)
                     free(konv_str[i]);
                 free(konv_str);
+                del();
                 exit(0);
             }
             else
@@ -363,6 +424,7 @@ int main()
                 {
                     ch_inout();
                     execvp(str[0], str);
+                    del();
                     perror("execvp's error");
                     exit(0);
                 }
