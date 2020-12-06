@@ -14,10 +14,11 @@
 
 char * word = NULL;
 char * word_per1 = NULL;
+char * word_per2 = NULL;
 char **str = NULL;
 char c;
 int fl_end=0, fl_s=0; 
-int fl_per=0, fl_per1=0, fl_lp=0;
+int fl_per=0, fl_per1=0, fl_per3=0, fl_lp=0;
 int len=0, len_word=0, n_commands=0;
 int fl_biNexWord=0; //флаг начала слова (чтобы не потерять первый символ)
 
@@ -86,42 +87,14 @@ void del(void)
     }
     free(str);
     free(word);
+    if(fl_per1!=0) free(word_per1);  
+    if(fl_per3!=0) free(word_per2);
 }
 
 void ch_inout(void)
 {
     int f;
-    if(fl_per==3)
-    {
-        f = open(word, O_RDONLY);
-        if (f==-1) perror(word);
-        dup2 (f,0);
-		close (f);
-    }
-    else if(fl_per==2)
-    {
-        f = open(word, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-        if (f==-1) perror(word);
-        dup2 (f,1);
-		close (f);
-    }
-    else if(fl_per==1)
-    {
-        f = open(word, O_WRONLY | O_APPEND | O_CREAT, 0666);
-        if (f==-1) perror(word);
-        dup2 (f,1);
-		close (f);
-    }
-
-
-    if(fl_per1==3)
-    {
-        f = open(word_per1, O_RDONLY);
-        if (f==-1) perror(word_per1);
-        dup2 (f,0);
-		close (f);
-    }
-    else if(fl_per1==2)
+    if(fl_per1==2)
     {
         f = open(word_per1, O_CREAT | O_WRONLY | O_TRUNC, 0666);
         if (f==-1) perror(word_per1);
@@ -135,44 +108,22 @@ void ch_inout(void)
         dup2 (f,1);
 		close (f);
     }
+    if(fl_per3==3)
+    {
+        f = open(word_per2, O_RDONLY);
+        if (f==-1) perror(word_per2);
+        dup2 (f,0);
+		close (f);
+    }
 }
-
 
 
 
 int PipeN(char **words, int len)
 {
     int fd[2], f, i=0, a=0, pid;
+    int fl_vp=0, fl_vl=0, ind_vp=0, ind_vl=0; 
     char **mas=NULL;
-
-    for(int l=0; l<len; l++)
-    {
-        if (strcmp(words[l], ">")==0)
-        {
-            free(words[l]);
-            words[l]=NULL;
-            l++;
-            f = open(words[l], O_CREAT | O_WRONLY | O_TRUNC, 0666);
-            if (f==-1) perror(words[l]);
-            free(words[l]);
-            words[l]=NULL;
-            dup2 (f,1);
-		    close (f);
-
-        }
-        else if(strcmp(words[l], ">>")==0)
-        {
-            free(words[l]);
-            words[l]=NULL;
-            l++;
-            f = open(words[l], O_WRONLY | O_APPEND | O_CREAT, 0666);
-            if (f==-1) perror(words[l]);
-            free(words[l]);
-            words[l]=NULL;
-            dup2 (f,1);
-		    close (f);
-        }
-    }
 
     while (words[i]!=NULL)
     {
@@ -192,8 +143,36 @@ int PipeN(char **words, int len)
             }      
             if ((pid=fork())==0)
             {
-                if ((i+1)!=len) 
-                    dup2(fd[1],1);
+                if(fl_vp==1)
+                {
+                    f = open(words[ind_vp], O_CREAT | O_WRONLY | O_TRUNC, 0666);
+                    if (f==-1) perror(words[ind_vp]);
+                    fl_vp=0; ind_vp=0;
+                    dup2(f, 1);
+                    close(f);
+                }
+                else if(fl_vp==2)
+                {
+                    f = open(words[ind_vp], O_WRONLY | O_APPEND | O_CREAT, 0666);
+                    if (f==-1) perror(words[ind_vp]);
+                    fl_vp=0; ind_vp=0;
+                    dup2(f, 1);
+                    close(f);
+                }
+                else
+                {
+                    if ((i+1)!=len) 
+                        dup2(fd[1],1);
+                }
+            	if(fl_vl==1)
+            	{
+                	f = open(words[ind_vl], O_RDONLY);
+                	if (f==-1) perror(words[ind_vl]);
+                	fl_vl=0; ind_vl=0;
+                	dup2 (f,0);
+		        close (f);
+            	}
+
                 close(fd[0]);
                 close(fd[1]);
                 execvp(mas[0], mas);
@@ -215,10 +194,12 @@ int PipeN(char **words, int len)
                 }
                 free(mas);
                 return 5;
-            }  
+            } 
             dup2(fd[0], 0);
             close(fd[0]);
             close(fd[1]);
+            fl_vl=0; ind_vl=0;
+            fl_vp=0; ind_vp=0;
             for (int b=0; b<a; b++)
             {
                 free(mas[b]);
@@ -228,6 +209,28 @@ int PipeN(char **words, int len)
             mas = NULL;
             a=0; 
             i++;  
+        }
+        else if(strcmp(words[i], ">")==0)
+        {
+            fl_vp=1;
+            i++;
+            ind_vp=i;
+            i++;
+
+        }
+        else if(strcmp(words[i], ">>")==0)
+        {
+            fl_vp=2;
+            i++;
+            ind_vp=i;
+            i++;
+        }
+        else if(strcmp(words[i], "<")==0)
+        {
+            fl_vl=1;
+            i++;
+            ind_vl=i;
+            i++;
         }
         else
         {
@@ -245,6 +248,30 @@ int PipeN(char **words, int len)
     { 
         if ((pid=fork())==0)
         {
+             if(fl_vp==1)
+                {
+                    f = open(words[ind_vp], O_CREAT | O_WRONLY | O_TRUNC, 0666);
+                    if (f==-1) perror(words[ind_vp]);
+                    fl_vp=0; ind_vp=0;
+                    dup2(f, 1);
+                    close(f);
+                }
+                else if(fl_vp==2)
+                {
+                    f = open(words[ind_vp], O_WRONLY | O_APPEND | O_CREAT, 0666);
+                    if (f==-1) perror(words[ind_vp]);
+                    fl_vp=0; ind_vp=0;
+                    dup2(f, 1);
+                    close(f);
+                }
+                if(fl_vl==1)
+            	{
+                	f = open(words[ind_vl], O_RDONLY);
+                	if (f==-1) perror(words[ind_vl]);
+                	fl_vl=0; ind_vl=0;
+                	dup2 (f,0);
+		        close (f);
+            	}
             mas = realloc(mas,sizeof(char**)*(a+1));
             mas[a] = NULL;
             execvp(mas[0],mas);
@@ -289,6 +316,7 @@ int main()
     int len_konv_str;
     for(;;)
     {
+        fl_per1=0; fl_per3=0;
         len_konv_str = 0;
         printdir();
         len_word=0;
@@ -296,30 +324,39 @@ int main()
         str = malloc(sizeof(char*)*COUNT);
         do
         {
-            fl_per=0; fl_per1=0;
+            fl_per=0;
             readword();
+            printf("%s", word);
             str[len_word]=strdup(word);
             len_word++;
             if(len_word >= COUNT) str=realloc(str,sizeof(char*)*(COUNT+len));
-        } while((fl_end == 0) && (fl_s == 0) && (fl_per==0) && (fl_lp==0));
+            
+            while ((fl_end == 0) && (fl_s == 0) && (fl_lp==0) && fl_per!=0)
+            {
+                if(fl_per==1)
+                {
+                    fl_per1=fl_per;
+                    fl_per=0;
+                    readword();
+                    word_per1=strdup(word);
+                }
+                else if(fl_per==2)
+                {
+                    fl_per1=fl_per;
+                    fl_per=0;
+                    readword();
+                    word_per1=strdup(word);
+                }
+                else if (fl_per==3)
+                {
+                    fl_per3=fl_per;
+                    fl_per=0;
+                    readword();
+                    word_per2=strdup(word);
+                }
+            }
+        } while((fl_end == 0) && (fl_s == 0) && (fl_lp==0));
         str[len_word]=NULL;
-
-        if(fl_per!=0)
-        {
-          fl_per1=fl_per;
-          readword();
-          word_per1 = strdup(word);
-          while(c!='\n')
-          {
-              readword();
-              if(fl_per1==fl_per || (fl_per==1 && fl_per1==2) ||(fl_per==2 && fl_per1==1))
-              {
-                  free(word_per1);
-                  word_per1 = strdup(word);
-                  fl_per1=fl_per;
-              }
-          }
-        }
 
         if(fl_lp==1)
         {
@@ -336,16 +373,37 @@ int main()
                 konv_str[i] = strdup(str[i]);
                 if(i >= COUNT) konv_str=realloc(konv_str,sizeof(char*)*(COUNT+i));
             }
-            if(fl_per!=0)
+            if(fl_per1!=0 || fl_per3!=0)
             {
-                if(fl_per==1) konv_str[len_konv_str]=strdup(s1);
-                else if(fl_per==2) konv_str[len_konv_str]=strdup(s2);
-                else if(fl_per==3) konv_str[len_konv_str]=strdup(s3);
-
-                len_konv_str++;
-                konv_str[len_konv_str]=strdup(word);
+                if(fl_per1==1) 
+                {
+                    konv_str[len_konv_str]=strdup(s1);
+                    len_konv_str++;
+                    konv_str[len_konv_str]=strdup(word_per1);
+                    len_konv_str++;
+                    fl_per1=0;
+                    free(word_per1);
+                }
+                else if(fl_per1==2) 
+                {
+                    konv_str[len_konv_str]=strdup(s2);
+                    len_konv_str++;
+                    konv_str[len_konv_str]=strdup(word_per1);
+                    len_konv_str++;
+                    fl_per1=0;
+                    free(word_per1);
+                }
+                
+                if(fl_per3==3) 
+                {
+                    konv_str[len_konv_str]=strdup(s3);
+                    len_konv_str++;
+                    konv_str[len_konv_str]=strdup(word_per2);
+                    len_konv_str++;
+                    fl_per3=0;
+                    free(word_per2);
+                }
                 if(len_konv_str >= COUNT) konv_str=realloc(konv_str,sizeof(char*)*(COUNT+len_konv_str));
-                len_konv_str++;
             }
             konv_str[len_konv_str] = strdup(lp);
             len_konv_str++;
@@ -373,7 +431,6 @@ int main()
                 }
             }
             konv_str[len_konv_str]=NULL;
-
 
             if (fork()==0)
             {
@@ -437,7 +494,6 @@ int main()
                 del();
             }
         }
-        if(fl_per1!=0) free(word_per1);
         del();
     }
 }
