@@ -18,7 +18,7 @@ char * word_per2 = NULL;
 char **str = NULL;
 char c;
 int fl_end=0, fl_s=0; 
-int fl_per=0, fl_per1=0, fl_per3=0, fl_lp=0;
+int fl_per=0, fl_per1=0, fl_per3=0, fl_lp=0, fl_fon=0, fl_er=0;
 int len=0, len_word=0, n_commands=0;
 int fl_biNexWord=0; //флаг начала слова (чтобы не потерять первый символ)
 
@@ -43,7 +43,7 @@ void readword(void)
             if(c=='\n') printdir();
         }
     }
-    while((c!=EOF) && (c!='\n') && (c!=' ') && (c!='<') &&(c!='>') &&(c!='|'))
+    while((c!=EOF) && (c!='\n') && (c!=' ') && (c!='<') &&(c!='>') &&(c!='|') && (c!='&'))
     {
         if(c=='"')
         {
@@ -72,7 +72,11 @@ void readword(void)
     {
         if((c=getchar())=='>') fl_per=1; else fl_per=2;
     }
-
+    if(c=='&')
+    {
+        fl_fon=1;
+        c=getchar();
+    }
     if(c=='|') fl_lp=1;
     if (len > 0) word[len] = '\0';
     if (c==EOF) fl_end = 1;
@@ -308,17 +312,36 @@ int PipeN(char **words, int len)
     return 0;
 }
 
-
+void check_fon(void)
+{
+    int pid, status;
+    pid = waitpid(-1, &status, WNOHANG);
+    if(pid>0 && WIFEXITED(status)!=0)
+    {
+        if(WIFSIGNALED(status))
+        {
+            printf("фоновый процесс %d завершился по сигналу %d", pid, WTERMSIG(status));
+        }
+        else
+        {
+            printf("фоновый процесс %d завершился c кодом %d", pid, WEXITSTATUS(status));
+        }
+    }
+}
 
 int main()
 {
+    signal(SIGINT, SIG_IGN);
+    int pid;
     char **konv_str = NULL;
     int len_konv_str;
     for(;;)
     {
         fl_per1=0; fl_per3=0;
+        fl_fon=0; fl_er=0;
         len_konv_str = 0;
         printdir();
+        check_fon();
         len_word=0;
         word = malloc(sizeof(char)*ARRSIZE);
         str = malloc(sizeof(char*)*COUNT);
@@ -326,7 +349,8 @@ int main()
         {
             fl_per=0;
             readword();
-            printf("%s", word);
+            if(fl_fon && !fl_s)
+                fl_er=1;
             str[len_word]=strdup(word);
             len_word++;
             if(len_word >= COUNT) str=realloc(str,sizeof(char*)*(COUNT+len));
@@ -450,7 +474,7 @@ int main()
         }
 
 
-        if (len_word!=0 && len_konv_str==0)
+        if (len_word!=0 && len_konv_str==0 && fl_er==0)
         {
             if (strcmp(str[0], "exit") == 0) 
             {
@@ -477,22 +501,41 @@ int main()
             }
             else 
             {
-                if(fork() == 0)
+                if((pid = fork()) == 0)
                 {
+                    if(fl_fon==0)
+                        signal(SIGINT, SIG_DFL);
                     ch_inout();
                     execvp(str[0], str);
                     del();
                     perror("execvp's error");
-                    exit(0);
+                    exit(2);
                 }
-                    else 
-                    wait(0);
+                else if (pid<0)
+                {
+                    perror("fork's error");
+                }
+                else
+                {
+                    if(fl_fon==0)
+                        wait(0);
+                    else
+                    {
+                        printf("запущен фоновый процесс %d\n", pid);
+                        check_fon();
+                        fl_fon=0;
+                    }
+
+                }
             }
             if(fl_end==1) 
             {
                 exit(0);
                 del();
             }
+        }
+        else{
+            printf("not corrrect &");
         }
         del();
     }
