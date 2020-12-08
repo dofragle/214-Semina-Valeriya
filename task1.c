@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -37,7 +38,11 @@ int main(int argc, char **argv)
         close(fd[0]);
         close(fd[1]);
 
-        if(!fork())execlp(argv[1], argv[1], NULL);
+        if(!fork())
+        {
+            execlp(argv[1], argv[1], NULL);
+            exit(4);
+        }
 
         int status;
         wait(&status);
@@ -52,13 +57,12 @@ int main(int argc, char **argv)
                 }
             } 
         }
+        wait(0);
         exit(2);
     }
  
     close(fd[0]);
     close(fd[1]);
-    wait(0);
-    wait(0);
-    wait(0);
+    while(wait(NULL) > 0);
     return 0;
 }
