@@ -159,6 +159,7 @@ int main()
     
     for (int i = 0; i < n; i++)
         delete [] labi[i]; // очистка памяти
+    delete [] labi;
     return 0;
     
 }
