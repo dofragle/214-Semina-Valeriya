@@ -131,7 +131,6 @@ int main()
 {
     Player player; Opponent opponent;
     Gun a("carbines");
-    Knife b("")
     player.hit(&a, opponent);
     cout << opponent.alive();
     return 0;
