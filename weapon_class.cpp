@@ -38,7 +38,7 @@ public:
         name = new char [strlen(w.name) + 1];
         strcpy(name, w.name);
         }
-    ~Weapon(){ //деструктор
+    virtual ~Weapon(){ //деструктор
         delete[] name;
     }
     void print_amount() const {
