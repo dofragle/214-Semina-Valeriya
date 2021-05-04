@@ -207,7 +207,8 @@ class HttpResponse{
     string code;
     string answer;
 public:
-    HttpResponse(HttpRequest& request, ConnectedSocket &csd) : header(), code(), answer(){
+    HttpResponse(HttpRequest& request, ConnectedSocket &csd) : header(), code(), answer()
+    {
         int fd=open(request.uri_way.c_str(),O_RDONLY);
         if (fd == -1)
         {
@@ -218,27 +219,24 @@ public:
             else 
                 code = "404 Not Found";
         }
-        else{
+        else
             code = "200 OK"; 
-        }
-        if (request.method != "GET"&&request.method!="HEAD")
+        if (request.method != "GET"&&request.method != "HEAD")
         {
             code = "501 Not Implemented";
-            HttpHeader allow("Allow","GET,HEAD");
+            HttpHeader allow("Allow", "GET,HEAD");
             header += allow.GetHeader()+"\n"; 
         }
         answer = "HTTP/1.0 ";
         answer += code+"\n";
+        answer += "Path: " + request.uri_way + "\n" ;
         time_t t = time(0);
-        HttpHeader date("Date",asctime(localtime(&t)));
+        HttpHeader date("Date", asctime(localtime(&t)));
         header += date.GetHeader();
         
         if (fd>=0)
         {
-            char c;
-            int length=0;
-            while(read(fd,&c,1))
-                length++;
+            int length = lseek(fd, 0, SEEK_END);
             lseek(fd,0,0);
             HttpHeader content_len("Content-length",to_string(length));
             header+=content_len.GetHeader()+"\n";
