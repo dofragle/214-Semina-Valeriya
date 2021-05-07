@@ -6,10 +6,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <vector>
- 
+#include <sys/wait.h>
+
 using namespace std;
 
-#define BUFF 3072
+#define BUFF 2048
 
 class Error{
     string err_type;
@@ -116,7 +117,7 @@ public:
     }
 };
 
-class HttpHeader{
+class HttpHeader{  
     string name;
     string value;
 public:
@@ -126,7 +127,7 @@ public:
         string tmp = str;
         int position = tmp.find(":");
         name = tmp.substr(0, position);
-        tmp.erase(0, position + 1);
+        tmp.erase(0, position+1);
         value = tmp;    
     }
     const string GetHeader() const
@@ -138,59 +139,62 @@ public:
     }
 };
 
-class HttpRequest{
+class HttpRequest{  
     string method;
     string uri_way;
     string arg;
     string version;
+    string tmp;
     int syntaxerr;
+    int iscgi;
 public:
-    HttpRequest(const string& request) : method(), uri_way(), arg(), version(), syntaxerr(0)
+    HttpRequest(const string& request) : method(), uri_way(), arg(), version(), syntaxerr(0), iscgi(0)
     {
-        string tmp = request;
-        int pos1 = tmp.find(" ");
-        if (pos1 < 0)
+        tmp = request;
+        int pos = tmp.find(" ");            
+        if (pos < 0)
             syntaxerr = 1;
         else
         {
-            method = tmp.substr(0, pos1);
-            tmp.erase(0, pos1+1);
+            method = tmp.substr(0, pos);
+            tmp.erase(0,pos + 1);
         }
-        pos1 = tmp.find(" ");
-        if (pos1 >= 0)
+        pos = tmp.find(" ");             
+        if (pos >= 0)
         {
-            string uri = tmp.substr(1, pos1);
-            if (pos1 == 1)
+            string uri=tmp.substr(1, pos);
+            if (pos==1)
             {
-                uri = "index.html";    
-                uri_way = uri.substr(0, uri.size());
+                uri="index.html";    
+                uri_way=uri.substr(0, uri.size());
             }
             else
             {
-                int pos2 = tmp.find("?");
+                int pos2 = tmp.find("?");  
                 if (pos2 != -1)
                 {
-                    uri_way = uri.substr(0, pos2);
-                    uri.erase(0, pos2+1);
+                    uri_way = uri.substr(0, pos2-1);
+                    uri.erase(0, pos2);
                     arg = uri;
+                    iscgi = 1;
                 }   
-                else
-                {
-                    uri_way = uri.substr(0, uri.size()-1);
-                    arg = " ";   
-                }
-                tmp.erase(0,pos1+1);
+            else
+            {
+                uri_way = uri.substr(0, uri.size()-1);
+                arg = " ";   
+            }
+            tmp.erase(0, pos+1);
             }
         }
-        int pos = tmp.find("/");
-        if (pos1 < 0)
+        pos = tmp.find("/");
+        if (pos<0)
             syntaxerr = 1;
         else 
             tmp.erase(0,pos);
-        pos=tmp.find("\n");
+        pos = tmp.find("\n");
         if (pos >= 0)
         {
-            version = tmp.substr(0, pos);
+            version = tmp.substr(0,pos);
             tmp.erase(0, pos);
         }
         else 
@@ -200,92 +204,162 @@ public:
         }
     } 
     friend class HttpResponse;
+    friend char** nEnv(HttpRequest &request);
 };
 
-class HttpResponse{ 
+char** nEnv (HttpRequest &request)
+{
+    char ** env = new char*[8];
+    env[0] = new char [request.tmp.size()];
+    env[1] = new char[22]; //SERVER_ADDR
+    env[2] = new char[17]; //SERVER_PORT
+    env[3] = new char[24]; //CONTENT_TYPE
+    env[4] = new char[25]; //SERVER_PROTOCOL
+    env[5] = new char[13 + request.uri_way.size()]; //SCRIPT_NAME
+    env[6] = new char[14 + request.arg.size()]; //QUERY_STRING
+    env[7] = NULL;
+
+    env[0] = (char *) request.tmp.c_str();
+    env[1] = (char *) "SERVER_ADDR=127.0.0.1";
+    env[2] = (char *) "SERVER_PORT=8081";
+    env[3] = (char *) "CONTENT_TYPE=text/plain";
+    env[4] = (char *) "SERVER_PROTOCOL=HTTP/1.1";
+    strcpy(env[5], "SCRIPT_NAME=");
+    strcat(env[5], request.uri_way.c_str());
+    strcpy(env[6], "QUERY_STRING=");
+    strcat(env[6], request.arg.c_str());
+    return env;
+}
+
+class HttpResponse{   
     string header;
     string code;
     string answer;
 public:
-    HttpResponse(HttpRequest& request, ConnectedSocket &csd) : header(), code(), answer()
-    {
-        int fd=open(request.uri_way.c_str(),O_RDONLY);
-        if (fd == -1)
-        {
-            if (errno == EACCES)
-                code = "403 Forbidden";
-            else if (request.syntaxerr==1)
-                code = "400 Bad Request";
-            else 
-                code = "404 Not Found";
+    HttpResponse(HttpRequest& request, ConnectedSocket &csd) : header(), code(), answer(){
+        int fd;
+        if (request.iscgi==1)
+        {        
+            pid_t pid;
+            if ((pid=fork())==0)
+            {       
+                fd=open("log.txt",O_WRONLY | O_TRUNC | O_CREAT, 0666);
+                if (fd<0){
+                    throw Error("Error in open");
+                }
+                dup2(fd,1);
+                close(fd);
+                char *argv[]={(char*)request.uri_way.c_str(),NULL};
+                char **env=nEnv(request);
+                execvpe(request.uri_way.c_str(), argv, env);
+                perror("execvpe");
+                exit(2);
+            }
+            else if (pid>0)
+            {     
+                int status;
+                wait(&status);
+                if (WIFEXITED(status) && (WEXITSTATUS(status)==0))
+                {  
+                    fd=open("log.txt", O_RDONLY);
+                    code="200 OK";
+                }
+                else 
+                    code="404 NOT FOUND";
+    
+            }
+            else if (pid<0)
+            {
+                perror("Fork");
+                exit(1);
+            }
         }
-        else
-            code = "200 OK"; 
-        if (request.method != "GET"&&request.method != "HEAD")
-        {
-            code = "501 Not Implemented";
-            HttpHeader allow("Allow", "GET,HEAD");
-            header += allow.GetHeader()+"\n"; 
+        else 
+        {            
+            fd=open(request.uri_way.c_str(), O_RDONLY);
+            if (fd==-1)
+            {
+                if (errno == EACCES)
+                    code = "403 Forbidden";
+                else if (request.syntaxerr==1)
+                    code = "400 Bad Request";
+                else 
+                    code = "404 Not Found";
+            }
+            else
+                code = "200 OK"; 
         }
         answer = "HTTP/1.0 ";
         answer += code+"\n";
-        answer += "Path: " + request.uri_way + "\n" ;
         time_t t = time(0);
-        HttpHeader date("Date", asctime(localtime(&t)));
+        HttpHeader date("Date",asctime(localtime(&t)));
         header += date.GetHeader();
         
-        if (fd>=0)
+        if (fd >= 0)
         {
-            int length = lseek(fd, 0, SEEK_END);
-            lseek(fd,0,0);
-            HttpHeader content_len("Content-length",to_string(length));
-            header+=content_len.GetHeader()+"\n";
+            int length=lseek(fd, 0, SEEK_END);
+            lseek(fd, 0, 0);
+            HttpHeader  content_len("Content-length", to_string(length));
+            header += content_len.GetHeader()+"\n";
         }
-        int ind = request.uri_way.find('.');
+        int indx = request.uri_way.find('.');
         string extension;
-        if (ind >= 0)
+        if (indx >= 0)
         {
-            extension = request.uri_way.substr(ind+1);
-            if (extension == "html")
+            extension=request.uri_way.substr(indx+1);
+            if (extension=="html")
             {
                 HttpHeader content_type("Content-type", "text/html");
-                header += content_type.GetHeader()+"\n";
+                header+=content_type.GetHeader()+"\n";
             }
-            else if(extension == "jpg" || extension == "jpeg")
+            else if(extension=="jpg" || extension=="jpeg")
             {
                 HttpHeader content_type("Content-type", "image/jpeg");
-                header += content_type.GetHeader()+"\n";
+                header+=content_type.GetHeader()+"\n";
             }
             else 
             {
                 HttpHeader content_type("Content-type", "text/plain");
-                header += content_type.GetHeader()+"\n";
+                header+=content_type.GetHeader()+"\n";
             }
         }
         if (fd>=0)
         {
             struct stat result;
-            if (stat(request.uri_way.c_str(),&result) == 0)
-            {
-                time_t t1 = result.st_mtime;
+            if (stat(request.uri_way.c_str(),&result)==0){
+                time_t t1=result.st_mtime;
                 HttpHeader last_mod("Last-modified", asctime(localtime(&t1)));
-                header += last_mod.GetHeader();
+                header+=last_mod.GetHeader();
             }  
         } 
-        answer += header+"\r\n";
-        if (fd >= 0 && request.method=="GET")
+        answer+=header+"\r\n";
+        if (fd>=0 && request.method=="GET" && extension!="jpg")
+        {
+            char mas[BUFF];
+            int i;
+            string s;
+            while((i=read(fd, mas, BUFF))>0){
+                for (int j=0; j<i; j++)
+                    s += string(1, mas[j]);
+                answer += s;
+                s.clear();
+            }
+            answer += "\r\n";
+            csd.Write(answer);
+        }
+        else if (fd < 0)
+        {
+            answer += code;
+            answer += "\r\n";
+            csd.Write(answer);
+        }
+        else if (extension=="jpg")
         {
             char mas[BUFF];
             int i;
             csd.Write(answer);
             while((i=read(fd,mas,BUFF))>0)
                 csd.Write(mas,i);
-        }
-        else
-        {
-            answer += code;
-            answer += "\r\n";
-            csd.Write(answer);
         }
         extension.clear();
         close(fd);
@@ -298,25 +372,25 @@ class HttpServer{
     SocketAddress servaddr;
     int queue;
 public:
-    HttpServer(int port, int n) : server(), servaddr("127.0.0.1",port), queue(n) {}
+    HttpServer(int port, int n) : server(), servaddr("127.0.0.1",port), queue(n){}
     void ProcessConnection(int cd, const SocketAddress& claddr)
-    {
+    {    
         ConnectedSocket cs(cd);
         string request;  
         cs.Read(request); 
-
+        int pos = request.find("\n");
+        string req = request.substr(0,pos);
         if (!request.empty())
-        {
+        {   
             HttpRequest text(request);
-            HttpResponse response(text,cs);
-            cout<<response.GetAnswer();
+            HttpResponse response(text, cs);
+            cout << response.GetAnswer();
         }
         request.clear();
         cs.Shutdown();
-        cout<<"Shutdown client \n"<<endl;
+        cout << "Shutdown client" << endl;
     }
-    void ServerLoop()
-    {
+    void ServerLoop(){
         try
         {
             server.Bind(servaddr);
@@ -324,7 +398,7 @@ public:
         }
         catch(Error err)
         {
-            cerr<<"Server Error "<<err.Get()<<endl;
+            cerr << "Server Error "<< err.Get() << endl;
             exit(2);                
         } 
         for(;;)
@@ -332,16 +406,15 @@ public:
             int cd;
             SocketAddress claddr;
             cout << "Waiting for connection...\n";
-            try{cd = server.Accept(claddr);}
-            catch(Error err)
-            {
-                cerr << "Error: "<<err.Get()<<endl;
+            try{cd=server.Accept(claddr);}
+            catch(Error err){
+                cerr << "Error: " << err.Get() << endl;
                 exit(1);
             }
             if (cd == -1)
                 break;
-            cout << "Client Accepted! \n\n";
-            ProcessConnection(cd, claddr);
+            cout << "Client Accepted!" << endl;
+            ProcessConnection(cd,claddr);
         }
     }
 }; 
@@ -349,11 +422,13 @@ public:
 
 int main()
 {
-    try{
-        HttpServer server(8081,5);
+    try
+    {
+        HttpServer server(1235,5);
         server.ServerLoop();
     }
-    catch(Error err){
-        cout<<"Error: "<<err.Get()<<endl;
+    catch(Error err)
+    {
+        cerr<<"Error: "<<err.Get()<<endl;
     };
 }
